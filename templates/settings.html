@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section-head">
+  <div>
+    <h1>Settings</h1>
+    <p>Runtime configuration for this local service.</p>
+  </div>
+</section>
+
+<section class="section-head">
+  <h2>API Auth</h2>
+</section>
+<form class="panel form-grid" method="post" action="/settings">
+  <label class="check full"><input name="auth_enabled" type="checkbox" {{ "checked" if settings.auth_enabled else "" }}> Require token for API calls</label>
+  <label class="full">Token <input name="auth_token" type="text" value="{{ settings.auth_token or '' }}" autocomplete="off"></label>
+  <p class="muted full">When enabled, requests to <code>/api/*</code> must include the <code>X-Commander-Token</code> header. The web UI remains available so you can update this setting.</p>
+  <div class="form-actions full">
+    <button class="primary" type="submit">Save Settings</button>
+  </div>
+</form>
+
+<section class="section-head compact">
+  <h2>ChatGPT</h2>
+</section>
+<form class="panel form-grid" method="post" action="/settings/chatgpt/model">
+  <label>Status <input type="text" value="{{ 'Connected' if chatgpt_connected else 'Not connected' }}" disabled></label>
+  <label>OAuth callback <input type="text" value="{{ 'Ready' if oauth_ready else 'Blocked' }}" disabled></label>
+  <label class="full">Model
+    <select name="openai_model">
+      {% for model in chatgpt_models %}
+      <option value="{{ model }}" {{ "selected" if model == settings.openai_model else "" }}>{{ model }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% if oauth_port_owner and not oauth_ready %}
+  <p class="muted full">Port 1455 is currently owned by {{ oauth_port_owner.name or "PID " ~ oauth_port_owner.pid }}.</p>
+  {% endif %}
+  <div class="form-actions full">
+    <button class="primary" type="submit" {{ "disabled" if not chatgpt_connected else "" }}>Save ChatGPT Model</button>
+  </div>
+</form>
+<section class="panel">
+  <div class="form-actions">
+    {% if not oauth_ready %}
+    <form method="post" action="/settings/chatgpt/prepare">
+      <button class="danger" type="submit">Stop Port 1455 App</button>
+    </form>
+    {% endif %}
+    {% if chatgpt_connected %}
+    <form method="post" action="/settings/chatgpt/disconnect">
+      <button class="danger" type="submit">Disconnect ChatGPT</button>
+    </form>
+    {% else %}
+    <form method="post" action="/settings/chatgpt/connect">
+      <button class="primary" type="submit">Connect ChatGPT</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

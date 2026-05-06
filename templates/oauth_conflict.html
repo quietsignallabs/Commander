@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section-head">
+  <div>
+    <h1>ChatGPT OAuth Port In Use</h1>
+    <p>Commander must own port 1455 to connect ChatGPT with the OpenAI OAuth client used by the working IPTV app.</p>
+  </div>
+</section>
+<section class="panel">
+  <p>Another app is already handling <code>http://localhost:1455/auth/callback</code>. This is commonly IPTV.</p>
+  {% if oauth_port_owner %}
+  <p class="muted">Current owner: <strong>{{ oauth_port_owner.name or "PID " ~ oauth_port_owner.pid }}</strong></p>
+  {% endif %}
+  <form method="post" action="/settings/chatgpt/prepare" class="form-actions">
+    <button class="danger" type="submit">Stop Port 1455 App</button>
+    <a class="button" href="/settings">Back to Settings</a>
+  </form>
+</section>
+{% endblock %}

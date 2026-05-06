@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section-head">
+  <div>
+    <h1>Run History</h1>
+    <p>Recent action output and exit codes.</p>
+  </div>
+  <form method="post" action="/history/clear">
+    <button class="danger" type="submit">Clear History</button>
+  </form>
+</section>
+<section class="panel">
+  {% for run in runs %}
+  <details>
+    <summary>{{ run.action_name }} · {{ run.status }} · exit {{ run.exit_code if run.exit_code is not none else "none" }} · {{ run.started_at }}</summary>
+    {% if run.stdout %}
+    <pre>{{ run.stdout }}</pre>
+    {% endif %}
+    {% if run.stderr %}
+    <pre>{{ run.stderr }}</pre>
+    {% endif %}
+  </details>
+  {% else %}
+  <p class="empty">No runs yet.</p>
+  {% endfor %}
+</section>
+{% endblock %}

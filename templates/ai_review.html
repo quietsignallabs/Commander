@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section-head">
+  <div>
+    <h1>Review AI Action</h1>
+    <p>Review the generated PowerShell before creating the action.</p>
+  </div>
+</section>
+
+<form class="panel form-grid" method="post" action="/actions/ai/create">
+  <label class="full">Action Name <input name="name" required value="{{ draft.name }}"></label>
+  <label class="full">PowerShell Script <textarea name="script" rows="14" required>{{ draft.script }}</textarea></label>
+  <label>Timeout <input name="timeout_seconds" type="number" min="1" max="3600" value="{{ draft.timeout_seconds }}"></label>
+  <label class="check full"><input name="inputs_enabled" type="checkbox" data-inputs-toggle {{ "checked" if draft.inputs_enabled else "" }}> Allow action inputs as parameters</label>
+  <div class="full" data-inputs-field>
+    <label>Input Parameters <textarea name="input_names" rows="4" placeholder="message&#10;volume&#10;url">{{ draft.input_names | join('\n') if draft.input_names else '' }}</textarea></label>
+    <p class="muted">Optional. Add one input name per line to show fields in the UI. Curl and Apple Shortcuts can send any valid input name when this box is enabled. Inputs are available as <code>COMMANDER_INPUT_NAME</code> environment variables, and .ps1 scripts also receive matching parameters.</p>
+  </div>
+  <p class="muted full">{{ draft.explanation }}</p>
+  <div class="form-actions full">
+    <button class="primary" type="submit">Create Action</button>
+    <a class="button" href="/actions/ai">Cancel</a>
+  </div>
+</form>
+{% endblock %}

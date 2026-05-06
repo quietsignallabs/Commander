@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section-head">
+  <div>
+    <h1>{{ "Edit Action" if action else "New Action" }}</h1>
+    <p>Create a saved command or uploaded PowerShell script.</p>
+  </div>
+</section>
+
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+
+<form class="panel form-grid" method="post" enctype="multipart/form-data" action="{{ '/actions/' ~ action.name if action else '/actions' }}">
+  <label>Name <input name="name" required value="{{ action.name if action else '' }}"></label>
+  <label>Type
+    <select name="type" data-action-type>
+      {% set selected_type = action.type if action else 'cmd' %}
+      <option value="cmd" {{ "selected" if selected_type == "cmd" else "" }}>cmd</option>
+      <option value="powershell" {{ "selected" if selected_type == "powershell" else "" }}>powershell</option>
+      <option value="ps1" {{ "selected" if selected_type == "ps1" else "" }}>ps1 script</option>
+    </select>
+  </label>
+  <label class="full" data-command-field>Command <textarea name="command" rows="6">{{ action.command if action and action.command else '' }}</textarea></label>
+  <div class="full" data-script-field>
+    <label>PowerShell Script <textarea name="script_text" rows="14">{{ script_text or '' }}</textarea></label>
+    <label class="muted">Replace from .ps1 file <input name="script_file" type="file" accept=".ps1"></label>
+  </div>
+  {% if action and action.script_path %}<p class="muted full">Current script: {{ action.script_path }}</p>{% endif %}
+  <label>Mode
+    <select name="mode">
+      {% set selected_mode = action.mode if action else 'wait' %}
+      <option value="wait" {{ "selected" if selected_mode == "wait" else "" }}>wait</option>
+      <option value="start" {{ "selected" if selected_mode == "start" else "" }}>start</option>
+    </select>
+  </label>
+  <label>Timeout <input name="timeout_seconds" type="number" min="1" max="3600" value="{{ action.timeout_seconds if action else 30 }}"></label>
+  <label class="check"><input name="enabled" type="checkbox" {{ "checked" if not action or action.enabled else "" }}> Enabled</label>
+  <label class="check full"><input name="inputs_enabled" type="checkbox" data-inputs-toggle {{ "checked" if action and action.inputs_enabled else "" }}> Allow action inputs as parameters</label>
+  <div class="full" data-inputs-field>
+    <label>Input Parameters <textarea name="input_names" rows="4" placeholder="message&#10;volume&#10;url">{{ action.input_names | join('\n') if action else '' }}</textarea></label>
+    <p class="muted">Optional. Add one input name per line to show fields in the UI. Curl and Apple Shortcuts can send any valid input name when this box is enabled. Inputs are available as <code>COMMANDER_INPUT_NAME</code> environment variables, and .ps1 scripts also receive matching parameters.</p>
+  </div>
+  <div class="form-actions full">
+    <button class="primary" type="submit">Save</button>
+    <a class="button" href="/">Cancel</a>
+  </div>
+</form>
+{% endblock %}

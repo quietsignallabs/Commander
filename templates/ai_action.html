@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section-head">
+  <div>
+    <h1>AI Action</h1>
+    <p>Describe the action you want. ChatGPT will draft a PowerShell script for review.</p>
+  </div>
+</section>
+
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+
+<form class="panel form-grid" method="post" action="/actions/ai/generate" data-ai-generate-form>
+  <label class="full">Describe the action
+    <textarea name="description" rows="8" required>{{ description or '' }}</textarea>
+  </label>
+  <p class="muted full">Generated scripts are not saved until you review and approve them.</p>
+  <div class="thinking full" data-ai-thinking hidden>
+    <span class="spinner" aria-hidden="true"></span>
+    <span>ChatGPT is thinking...</span>
+  </div>
+  <div class="form-actions full">
+    <button class="primary" type="submit" data-ai-submit>Generate Draft</button>
+    <a class="button" href="/">Cancel</a>
+  </div>
+</form>
+{% endblock %}

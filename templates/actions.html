@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section-head">
+  <div>
+    <h1>Actions</h1>
+    <p>Saved commands Apple Shortcuts can run by name.</p>
+  </div>
+  <div class="form-actions">
+    <a class="button primary" href="/actions/ai">AI Action</a>
+    <a class="button primary" href="/actions/new">New Action</a>
+  </div>
+</section>
+
+<section class="panel">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Mode</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for action in actions %}
+      {% set api_url = api_url_for(base_url, action.name) %}
+      <tr>
+        <td><strong>{{ action.name }}</strong></td>
+        <td>{{ action.type }}</td>
+        <td>{{ action.mode }}</td>
+        <td>{{ "Enabled" if action.enabled else "Disabled" }}</td>
+        <td class="actions-cell">
+          <form method="post" action="/actions/{{ action.name }}/run" data-live-run-form data-action-name="{{ action.name }}"><button type="submit">Run</button></form>
+          <button type="button" data-help-toggle="curl-{{ action.id }}">curl</button>
+          <button type="button" data-help-toggle="shortcut-{{ action.id }}">Apple Shortcut</button>
+          <a class="button" href="/actions/{{ action.name }}/edit">Edit</a>
+          <form method="post" action="/actions/{{ action.name }}/delete"><button class="danger" type="submit">Delete</button></form>
+        </td>
+      </tr>
+      <tr class="help-row" id="curl-{{ action.id }}" hidden>
+        <td colspan="5">
+          <div class="help-panel">
+            <h3>Windows curl</h3>
+            <p>Run this from another Windows machine on the same local network.</p>
+            <pre>{{ curl_for(base_url, action.name, settings.auth_enabled, settings.auth_token, action.input_names, action.inputs_enabled) }}</pre>
+          </div>
+        </td>
+      </tr>
+      <tr class="help-row" id="shortcut-{{ action.id }}" hidden>
+        <td colspan="5">
+          <div class="help-panel">
+            <h3>Apple Shortcut</h3>
+            <ol>
+              <li>Open the Shortcuts app on your iPhone, iPad, or Mac.</li>
+              <li>Create a new shortcut and name it for this action.</li>
+              <li>Add action: Get Contents of URL.</li>
+              <li>Set URL to <code>{{ api_url }}</code>.</li>
+              <li>Expand the action details with Show More or the chevron control.</li>
+              <li>Set Method to POST.</li>
+              {% if settings.auth_enabled and settings.auth_token %}
+              <li>Add a Headers dictionary.</li>
+              <li>Add header key <code>X-Commander-Token</code> with value <code>{{ settings.auth_token }}</code>.</li>
+              {% endif %}
+              {% if action.inputs_enabled and action.input_names %}
+              <li>Set Request Body to JSON.</li>
+              <li>Tap Add new field and choose Dictionary.</li>
+              <li>In that new Dictionary field, set Key to <code>inputs</code>. It should now show <code>inputs</code> with <code>0 items</code>.</li>
+              <li>Tap the <code>inputs</code> row that shows <code>0 items</code> to open it.</li>
+              {% for input_name in action.input_names %}
+              <li>Inside <code>inputs</code>, tap Add new field and choose Text.</li>
+              <li>Set the Text field Key to <code>{{ input_name }}</code>.</li>
+              <li>Set the Text field value to the message or value you want to send.</li>
+              {% endfor %}
+              <li>The request body should look like this:
+                <pre>{
+  "inputs": {
+{% for input_name in action.input_names %}    "{{ input_name }}": "your {{ input_name }} here"{% if not loop.last %},{% endif %}
+{% endfor %}  }
+}</pre>
+              </li>
+              {% elif action.inputs_enabled %}
+              <li>Set Request Body to JSON.</li>
+              <li>Tap Add new field and choose Dictionary.</li>
+              <li>In that new Dictionary field, set Key to <code>inputs</code>. It should now show <code>inputs</code> with <code>0 items</code>.</li>
+              <li>Tap the <code>inputs</code> row that shows <code>0 items</code> to open it.</li>
+              <li>Inside <code>inputs</code>, tap Add new field and choose Text.</li>
+              <li>Set the Text field Key to the input name your script expects.</li>
+              <li>Set the Text field value to the message or value you want to send.</li>
+              <li>The request body should look like this:
+                <pre>{
+  "inputs": {
+    "message": "your value here"
+  }
+}</pre>
+              </li>
+              {% else %}
+              <li>Leave Request Body empty.</li>
+              {% endif %}
+              <li>Run the shortcut while connected to the same local network as this host.</li>
+            </ol>
+          </div>
+        </td>
+      </tr>
+      {% if action.inputs_enabled and action.input_names %}
+      <tr>
+        <td colspan="5">
+          <form class="action-inputs" data-live-run-inputs="{{ action.name }}">
+            {% for input_name in action.input_names %}
+            <label>{{ input_name }} <input name="input_{{ input_name }}" autocomplete="off"></label>
+            {% endfor %}
+          </form>
+        </td>
+      </tr>
+      {% endif %}
+      {% else %}
+      <tr><td colspan="5" class="empty">No actions yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="live-output panel" id="live-output" hidden>
+  <div class="live-output-head">
+    <div>
+      <h2 data-live-output-title>Live Output</h2>
+      <p data-live-output-status>Waiting for an action to run.</p>
+    </div>
+    <button class="icon-button" type="button" data-live-output-close aria-label="Close output" hidden>&times;</button>
+  </div>
+  <div class="thinking" data-live-output-running hidden>
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Running action...</span>
+  </div>
+  <div class="live-output-grid">
+    <div>
+      <h3>Output</h3>
+      <pre data-live-output-stdout></pre>
+    </div>
+    <div data-live-output-stderr-wrap hidden>
+      <h3>Errors</h3>
+      <pre data-live-output-stderr></pre>
+    </div>
+  </div>
+</section>
+{% endblock %}
