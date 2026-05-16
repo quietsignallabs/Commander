@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from dataclasses import asdict
@@ -10,7 +11,8 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from commander.ai import complete_oauth, disconnect_openai, generate_action_draft, is_connected, list_chatgpt_models, start_oauth
+from commander.ai import CHATGPT_OAUTH_MODELS, complete_oauth, disconnect_openai, generate_action_draft, is_connected, list_chatgpt_models, start_oauth
+from commander.client_encryption import client_encryption_base_url, ensure_client_certificate, generate_pairing_pin
 from commander.executor import run_action
 from commander.models import ActionInput, ValidationError
 from commander.oauth_listener import ensure_oauth_listener, get_oauth_port_owner, is_commander_oauth_listener_available, stop_oauth_port_owner
@@ -20,6 +22,7 @@ from commander.storage import Storage
 
 templates = Jinja2Templates(directory=str(resource_path("templates")))
 templates.env.globals["asset_version"] = "2026-05-01-action-inputs"
+logger = logging.getLogger(__name__)
 
 
 def create_web_router(storage: Storage) -> APIRouter:
@@ -188,11 +191,14 @@ def create_web_router(storage: Storage) -> APIRouter:
     def settings(request: Request) -> HTMLResponse:
         app_settings = request.app.state.settings
         port_owner = get_oauth_port_owner()
+        client_cert = ensure_client_certificate(app_settings)
         return templates.TemplateResponse(
             request,
             "settings.html",
             {
                 "settings": app_settings,
+                "client_encryption_base_url": client_encryption_base_url(app_settings),
+                "client_certificate_fingerprint": client_cert.fingerprint_sha256,
                 "chatgpt_connected": is_connected(app_settings),
                 "chatgpt_models": safe_chatgpt_models(app_settings),
                 "oauth_ready": is_commander_oauth_listener_available(),
@@ -205,11 +211,37 @@ def create_web_router(storage: Storage) -> APIRouter:
         request: Request,
         auth_enabled: str | None = Form(None),
         auth_token: str = Form(""),
+        client_encryption_enabled: str | None = Form(None),
+        client_encryption_port: int = Form(6768),
     ) -> RedirectResponse:
         app_settings = request.app.state.settings
         app_settings.auth_enabled = auth_enabled == "on"
         app_settings.auth_token = auth_token.strip()
+        app_settings.client_encryption_enabled = client_encryption_enabled == "on"
+        app_settings.client_encryption_port = client_encryption_port
+        if app_settings.client_encryption_enabled:
+            cert_info = ensure_client_certificate(app_settings)
+            logger.info(
+                "Client encryption settings saved: enabled=True port=%s fingerprint=%s restart_required=True",
+                app_settings.client_encryption_port,
+                cert_info.fingerprint_sha256,
+            )
+        else:
+            logger.info("Client encryption settings saved: enabled=False port=%s", app_settings.client_encryption_port)
         app_settings.save_runtime_settings()
+        return RedirectResponse("/settings", status_code=303)
+
+    @router.post("/settings/client-encryption/pin")
+    def create_client_pairing_pin(request: Request) -> RedirectResponse:
+        app_settings = request.app.state.settings
+        cert_info = ensure_client_certificate(app_settings)
+        generate_pairing_pin(app_settings)
+        logger.info(
+            "Client pairing PIN generated: expires_at=%s port=%s fingerprint=%s",
+            app_settings.client_pairing_pin_expires_at,
+            app_settings.client_encryption_port,
+            cert_info.fingerprint_sha256,
+        )
         return RedirectResponse("/settings", status_code=303)
 
     @router.post("/settings/chatgpt/connect")
@@ -264,7 +296,7 @@ def safe_chatgpt_models(settings) -> list[str]:
     try:
         return list_chatgpt_models(settings)
     except Exception:
-        return [settings.openai_model]
+        return CHATGPT_OAUTH_MODELS.copy()
 
 
 async def _save_action(

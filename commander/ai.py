@@ -17,9 +17,9 @@ from commander.config import Settings
 from commander.models import normalize_input_names
 
 try:
-    import codex_auth                                                                
+    import codex_auth  # noqa: F401  # Must be imported before openai when available.
     from openai import OpenAI
-except Exception:                                                                    
+except Exception:  # pragma: no cover - exercised only when optional deps are absent.
     OpenAI = None
 
 
@@ -29,6 +29,14 @@ OPENAI_AUTH_URL = "https://auth.openai.com/oauth/authorize"
 OPENAI_TOKEN_URL = "https://auth.openai.com/oauth/token"
 OPENAI_SCOPE = "openid profile email offline_access"
 OPENAI_MODEL = "gpt-5.5"
+CHATGPT_OAUTH_MODELS = [
+    "gpt-5.5",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.3-codex",
+    "gpt-5.3-codex-spark",
+    "gpt-5.2",
+]
 
 _oauth_pending: dict[str, dict[str, str]] = {}
 _oauth_lock = Lock()
@@ -161,27 +169,7 @@ def generate_action_draft(settings: Settings, description: str) -> ActionDraft:
 
 
 def list_chatgpt_models(settings: Settings) -> list[str]:
-    access_token = get_openai_access_token(settings)
-    if not access_token or OpenAI is None:
-        return [settings.openai_model]
-
-    with _chatgpt_lock:
-        os.environ["CODEX_AUTH_TOKEN"] = access_token
-        try:
-            client = OpenAI()
-            response = client.models.list()
-        finally:
-            os.environ.pop("CODEX_AUTH_TOKEN", None)
-
-    ids = []
-    for model in getattr(response, "data", []):
-        model_id = str(getattr(model, "id", "")).strip()
-        if model_id.startswith("gpt-"):
-            ids.append(model_id)
-
-    ordered = [settings.openai_model]
-    ordered.extend(sorted(ids, reverse=True))
-    return list(dict.fromkeys(ordered))
+    return CHATGPT_OAUTH_MODELS.copy()
 
 
 def draft_from_non_json(text: str, description: str) -> ActionDraft | None:

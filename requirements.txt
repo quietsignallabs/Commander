@@ -2,6 +2,7 @@ fastapi
 codex-auth>=0.1.1
 openai>=1.0.0
 requests>=2.31.0
+cryptography>=42.0.0
 jinja2
 python-multipart
 uvicorn[standard]

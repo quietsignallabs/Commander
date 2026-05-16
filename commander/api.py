@@ -1,19 +1,26 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import Body, FastAPI, Header, HTTPException, Response
+from fastapi import Body, FastAPI, Header, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from commander.ai import generate_action_draft
+from commander.client_encryption import client_encryption_base_url, ensure_client_certificate, pairing_pin_is_valid
 from commander.config import Settings
 from commander.executor import run_action
 from commander.models import ActionInput, ValidationError
 from commander.paths import resource_path
 from commander.storage import Storage
 from commander.web import create_web_router, load_script_text, save_generated_script, save_script_text
+
+
+logger = logging.getLogger(__name__)
 
 
 class ActionPayload(BaseModel):
@@ -46,6 +53,10 @@ class AIActionPayload(BaseModel):
     description: str
 
 
+class ClientPairingPayload(BaseModel):
+    pin: str
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     settings.ensure_directories()
@@ -56,6 +67,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Commander", version="0.1.0")
     app.state.settings = settings
     app.state.storage = storage
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        if request.url.path == "/api/client-encryption/pair":
+            logger.warning(
+                "Client pairing validation failed: scheme=%s client=%s content_type=%s content_length=%s missing_fields=%s errors=%s",
+                request.url.scheme,
+                request.client.host if request.client else "unknown",
+                request.headers.get("content-type", ""),
+                request.headers.get("content-length", ""),
+                _missing_validation_fields(exc),
+                _validation_error_types(exc),
+            )
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
     app.mount("/static", StaticFiles(directory=str(resource_path("static"))), name="static")
     app.include_router(create_web_router(storage))
 
@@ -177,7 +203,74 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         require_api_token(settings, x_commander_token)
         return [asdict(run) for run in storage.list_runs()]
 
+    @app.get("/api/client-encryption/info")
+    def client_encryption_info() -> dict[str, Any]:
+        cert_info = ensure_client_certificate(settings)
+        logger.info(
+            "Client encryption info requested: enabled=%s port=%s scheme=https fingerprint=%s",
+            settings.client_encryption_enabled,
+            settings.client_encryption_port,
+            cert_info.fingerprint_sha256,
+        )
+        return {
+            "enabled": settings.client_encryption_enabled,
+            "port": settings.client_encryption_port,
+            "base_url": client_encryption_base_url(settings),
+            "certificate_fingerprint_sha256": cert_info.fingerprint_sha256,
+        }
+
+    @app.post("/api/client-encryption/pair")
+    def pair_client(request: Request, payload: ClientPairingPayload) -> dict[str, Any]:
+        logger.info(
+            "Client pairing attempt: scheme=%s client=%s content_type=%s has_pin=%s",
+            request.url.scheme,
+            request.client.host if request.client else "unknown",
+            request.headers.get("content-type", ""),
+            bool(payload.pin.strip()),
+        )
+        if not settings.client_encryption_enabled:
+            logger.warning("Client pairing rejected: reason=client_encryption_disabled scheme=%s", request.url.scheme)
+            raise HTTPException(status_code=400, detail="Client encryption is not enabled")
+        if request.url.scheme != "https":
+            logger.warning("Client pairing rejected: reason=plain_http client=%s", request.client.host if request.client else "unknown")
+            raise HTTPException(status_code=400, detail="Pairing must be completed over HTTPS")
+        if not pairing_pin_is_valid(settings, payload.pin.strip()):
+            logger.warning(
+                "Client pairing rejected: reason=invalid_or_expired_pin client=%s pin_configured=%s expires_at=%s",
+                request.client.host if request.client else "unknown",
+                bool(settings.client_pairing_pin),
+                settings.client_pairing_pin_expires_at or "",
+            )
+            raise HTTPException(status_code=401, detail="Invalid or expired pairing PIN")
+        cert_info = ensure_client_certificate(settings)
+        settings.client_pairing_pin = None
+        settings.client_pairing_pin_expires_at = None
+        settings.save_runtime_settings()
+        logger.info(
+            "Client pairing succeeded: client=%s port=%s fingerprint=%s",
+            request.client.host if request.client else "unknown",
+            settings.client_encryption_port,
+            cert_info.fingerprint_sha256,
+        )
+        return {
+            "base_url": client_encryption_base_url(settings),
+            "certificate_fingerprint_sha256": cert_info.fingerprint_sha256,
+        }
+
     return app
+
+
+def _missing_validation_fields(exc: RequestValidationError) -> str:
+    fields = []
+    for error in exc.errors():
+        if error.get("type") == "missing":
+            location = ".".join(str(part) for part in error.get("loc", ()))
+            fields.append(location)
+    return ",".join(fields) if fields else "none"
+
+
+def _validation_error_types(exc: RequestValidationError) -> str:
+    return ",".join(str(error.get("type", "unknown")) for error in exc.errors())
 
 
 def action_input_from_payload(settings: Settings, payload: ActionPayload, existing_action=None) -> ActionInput:

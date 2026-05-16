@@ -11,6 +11,7 @@ import uvicorn
 from PIL import Image
 
 from commander.api import create_app
+from commander.client_encryption import encrypted_uvicorn_kwargs
 from commander.config import Settings
 from commander.oauth_listener import start_oauth_listener
 from commander.paths import resource_path, runtime_root
@@ -36,7 +37,33 @@ class CommanderTray:
                 access_log=False,
             )
         )
+        self.encrypted_server = None
+        if self.settings.client_encryption_enabled:
+            encrypted_kwargs = encrypted_uvicorn_kwargs(self.settings)
+            logging.info(
+                "Client encryption enabled at startup: https_port=%s certfile=%s",
+                encrypted_kwargs["port"],
+                encrypted_kwargs["ssl_certfile"],
+            )
+            self.encrypted_server = uvicorn.Server(
+                uvicorn.Config(
+                    self.app,
+                    **encrypted_kwargs,
+                    log_level="warning",
+                    log_config=None,
+                    access_log=False,
+                )
+            )
+        else:
+            logging.info("Client encryption disabled at startup")
         self.server_thread = threading.Thread(target=self.run_server, name="CommanderServer", daemon=True)
+        self.encrypted_server_thread = None
+        if self.encrypted_server is not None:
+            self.encrypted_server_thread = threading.Thread(
+                target=self.run_encrypted_server,
+                name="CommanderEncryptedClientServer",
+                daemon=True,
+            )
         self.icon = pystray.Icon(
             "Commander",
             load_tray_image(),
@@ -52,6 +79,9 @@ class CommanderTray:
         start_oauth_listener(self.app)
         logging.info("Starting Commander server thread")
         self.server_thread.start()
+        if self.encrypted_server_thread is not None:
+            logging.info("Starting encrypted client server thread")
+            self.encrypted_server_thread.start()
         logging.info("Starting tray icon")
         self.icon.run()
 
@@ -62,6 +92,15 @@ class CommanderTray:
             logging.exception("Commander server crashed")
             raise
 
+    def run_encrypted_server(self) -> None:
+        if self.encrypted_server is None:
+            return
+        try:
+            self.encrypted_server.run()
+        except Exception:
+            logging.exception("Commander encrypted client server crashed")
+            raise
+
     def open_config(self, _icon=None, _item=None) -> None:
         url = commander_url(self.settings.port)
         logging.info("Opening Commander web portal at %s", url)
@@ -70,6 +109,8 @@ class CommanderTray:
     def quit(self, _icon=None, _item=None) -> None:
         logging.info("Quitting Commander")
         self.server.should_exit = True
+        if self.encrypted_server is not None:
+            self.encrypted_server.should_exit = True
         self.icon.stop()
 
 

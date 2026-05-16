@@ -14,10 +14,27 @@
   <label class="check full"><input name="auth_enabled" type="checkbox" {{ "checked" if settings.auth_enabled else "" }}> Require token for API calls</label>
   <label class="full">Token <input name="auth_token" type="text" value="{{ settings.auth_token or '' }}" autocomplete="off"></label>
   <p class="muted full">When enabled, requests to <code>/api/*</code> must include the <code>X-Commander-Token</code> header. The web UI remains available so you can update this setting.</p>
+  <section class="section-head compact full">
+    <h2>Client Encryption</h2>
+  </section>
+  <label class="check full"><input name="client_encryption_enabled" type="checkbox" {{ "checked" if settings.client_encryption_enabled else "" }}> Enable encrypted iPhone client endpoint</label>
+  <label>Encrypted port <input name="client_encryption_port" type="number" min="1" max="65535" value="{{ settings.client_encryption_port }}"></label>
+  <label class="full">Encrypted URL <input type="text" value="{{ client_encryption_base_url }}" disabled></label>
+  <label class="full">Certificate SHA-256 fingerprint <input type="text" value="{{ client_certificate_fingerprint }}" disabled></label>
+  {% if settings.client_pairing_pin %}
+  <label>Pairing PIN <input type="text" value="{{ settings.client_pairing_pin }}" disabled></label>
+  <p class="muted">Expires at {{ settings.client_pairing_pin_expires_at }}</p>
+  {% endif %}
+  <p class="muted full">The iPhone app uses this endpoint over HTTPS and pins the self-signed certificate fingerprint after PIN pairing.</p>
   <div class="form-actions full">
     <button class="primary" type="submit">Save Settings</button>
   </div>
 </form>
+<section class="panel">
+  <form method="post" action="/settings/client-encryption/pin">
+    <button class="primary" type="submit">Generate Pairing PIN</button>
+  </form>
+</section>
 
 <section class="section-head compact">
   <h2>ChatGPT</h2>
@@ -36,7 +53,7 @@
   <p class="muted full">Port 1455 is currently owned by {{ oauth_port_owner.name or "PID " ~ oauth_port_owner.pid }}.</p>
   {% endif %}
   <div class="form-actions full">
-    <button class="primary" type="submit" {{ "disabled" if not chatgpt_connected else "" }}>Save ChatGPT Model</button>
+    <button class="primary" type="submit">Save ChatGPT Model</button>
   </div>
 </form>
 <section class="panel">

@@ -53,7 +53,7 @@ def run_action(action: Action, storage: Storage, inputs: dict[str, str] | None =
     env = build_env(action, inputs)
 
     if action.mode == "start":
-        subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+        subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env, **hidden_subprocess_kwargs())
         return RunResult(run_id=run_id, status="running", exit_code=None, stdout="", stderr="", duration_ms=None)
 
     start = time.monotonic()
@@ -65,6 +65,7 @@ def run_action(action: Action, storage: Storage, inputs: dict[str, str] | None =
             timeout=action.timeout_seconds,
             check=False,
             env=env,
+            **hidden_subprocess_kwargs(),
         )
     except subprocess.TimeoutExpired as exc:
         duration_ms = int((time.monotonic() - start) * 1000)
@@ -113,6 +114,13 @@ def _decode_timeout_output(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode(errors="replace")
     return value
+
+
+def hidden_subprocess_kwargs() -> dict[str, int]:
+    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if not creation_flags:
+        return {}
+    return {"creationflags": creation_flags}
 
 
 def normalize_run_inputs(action: Action, inputs: dict[str, str] | None = None) -> dict[str, str]:
